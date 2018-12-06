@@ -18,11 +18,12 @@ unsafeFromVectorMax maxValue vec = runST $ do
   mcounter <- MV.replicate counterSize 0
   V.forM_ vec $ \v -> MV.unsafeModify mcounter (+1) (v `unsafeShiftR` width)
   counter <- UV.unsafeFreeze mcounter
+  let upperVec = V.fromList $ build $ BitStream 0 (upper counter)
   return EliasFano
     { efWidth = width
-    , efUpper = V.fromList $ build $ BitStream 0 (upper counter)
+    , efUpper = upperVec
+    , efRanks = UV.prescanl (+) 0 $ UV.map popCount upperVec
     , efLower = V.fromList $ build $ BitStream 0 lower
-    -- , efRanks = UV.postscanl (+) 0 $ UV.map popCount content
     }
   where
     len = V.length vec
@@ -44,12 +45,13 @@ unsafeFromVector vec
 data EliasFano = EliasFano
     { efWidth :: !Int
     , efUpper :: !(UV.Vector Word64)
+    , efRanks :: !(UV.Vector Int)
     , efLower :: !(UV.Vector Word64)
     }
     deriving Show
 
 (!) :: EliasFano -> Int -> Int
-EliasFano width upper lower ! i = unsafeShiftL (select upper i - i) width
+EliasFano width upper ranks lower ! i = unsafeShiftL (select ranks upper i - i) width
   .|. fromIntegral (readBits lower width (i * width))
 
 prop_access :: [QC.NonNegative Int] -> QC.NonNegative Int -> QC.Property

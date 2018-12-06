@@ -62,15 +62,16 @@ readBits vec width pos
     extra = V.unsafeIndex vec (i + 1) .&. mask (width + b - 64)
 {-# SPECIALISE readBits :: UV.Vector Word64 -> Int -> Int -> Word64 #-}
 
-select :: V.Vector v Word64 => v Word64 -> Int -> Int
-select vec = go 0 0 where
-  go !acc !i !q
-    | pv <= q = go (acc + 64) (i + 1) (q - pv)
-    | otherwise = acc + selectWord64 v q
+select :: (V.Vector v Int, V.Vector v Word64) => v Int -> v Word64 -> Int -> Int
+select ranks vec q = go 0 (V.length ranks - 1) where
+  go l r
+    | l >= r = selectWord64 v (q - V.unsafeIndex ranks l) + 64 * l
+    | q < V.unsafeIndex ranks (i + 1) = go l i
+    | otherwise = go (i + 1) r
     where
+      i = div (l + r) 2
       v = V.unsafeIndex vec i
-      pv = popCount v
-{-# SPECIALISE select :: UV.Vector Word64 -> Int -> Int #-}
+{-# SPECIALISE select :: UV.Vector Int -> UV.Vector Word64 -> Int -> Int #-}
 
 -- | Convert a word of various bits into a word where each byte contains the count of bits in the corresponding original byte
 --
