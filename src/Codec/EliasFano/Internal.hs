@@ -47,6 +47,7 @@ build (BitStream s0 upd) = go s0 zeroBits 0 where
       w' | width + len >= 64 -> (acc .|. unsafeShiftL w' len)
             : go s' (unsafeShiftR w' (64 - len)) (len + width - 64)
          | otherwise -> go s' (acc .|. unsafeShiftL w' len) (len + width)
+{-# INLINE build #-}
 
 readBits :: V.Vector Word64 -> Int -> Int -> Word64
 readBits vec width pos
@@ -59,9 +60,8 @@ readBits vec width pos
     extra = V.unsafeIndex vec (i + 1) .&. mask (width + b - 64)
 
 selectFrom :: Int -> V.Vector Word64 -> Int -> Int
-selectFrom offset vec = go offset 0 where
+selectFrom offset vec = uncurry (flip go) $ divMod offset 64 where
   go ofs i q
-    | ofs >= 64 = go (ofs - 64) (i + 1) q
     | ofs == 0, popCount v < q = 64 + go ofs (i + 1) (q - popCount v)
     | ofs == 0 = selectWord64 v q
     | i >= V.length vec - 1 = selectWord64 (v `unsafeShiftR` ofs) q

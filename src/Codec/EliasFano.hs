@@ -16,20 +16,20 @@ unsafeEncodeMax maxValue vec = runST $ do
   mcounter <- MV.replicate counterSize 0
   V.forM_ vec $ \v -> MV.unsafeModify mcounter (+1) (v `unsafeShiftR` width)
   counter <- V.unsafeFreeze mcounter
-  let upd (Left i)
-        | i == len = Skip (Right 0)
-        | otherwise = Yield width (fromIntegral $ V.unsafeIndex vec i) (Left $! i + 1)
-      upd (Right i)
-        | i == counterSize = Done
-        | otherwise = let n = V.unsafeIndex counter i in Yield (n + 1) (mask n) (Right $! i + 1)
   return EliasFano
     { efWidth = width
     , efLength = len
-    , efContent = V.fromList $ build $ BitStream (Left 0) upd
+    , efContent = V.fromList $ build $ BitStream (Left 0) (upd counter)
     }
   where
     len = V.length vec
     width = max 1 $ ceiling $ logBase 2 (fromIntegral maxValue / fromIntegral len :: Double)
+    upd _ (Left i)
+      | i == len = Skip (Right 0)
+      | otherwise = Yield width (fromIntegral $ V.unsafeIndex vec i) (Left $! i + 1)
+    upd counter (Right i)
+      | i == V.length counter = Done
+      | otherwise = let n = V.unsafeIndex counter i in Yield (n + 1) (mask n) (Right $! i + 1)
 
 unsafeEncode :: V.Vector Int -> EliasFano
 unsafeEncode vec
