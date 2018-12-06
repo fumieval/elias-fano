@@ -1,55 +1,38 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleContexts #-}
-module Codec.EliasFano.Internal (Step(..)
-  , BitStream(..)
+{-# LANGUAGE LambdaCase #-}
+module Codec.EliasFano.Internal (B(..), chunk64
   , mask
-  , build
   , readBits
   , select
   ) where
 
 import Control.Exception (assert)
 import Data.Bits
-import Data.String
 import Data.Word (Word64)
-import Data.List.Split (chunksOf)
 import qualified Data.Vector.Generic as V
 import qualified Data.Vector.Unboxed as UV
+import qualified Data.Vector.Fusion.Stream.Monadic as S
 
-data Step s = Done
-  | Skip s
-  | Yield !Int !Word64 s
+data B = B !Int !Word64
 
-data BitStream = forall s. BitStream s (s -> Step s)
-
-instance Show BitStream where
-  show (BitStream s0 f) = show (unwords $ chunksOf 8 $ go s0) where
-    go s = case f s of
-      Done -> ""
-      Skip s' -> go s'
-      Yield width w s' -> [if testBit w i then '1' else '0' | i <- [0..width - 1]] ++ go s'
-
-instance IsString BitStream where
-  fromString str = BitStream str go where
-    go [] = Done
-    go ('0' : xs) = Yield 1 0 xs
-    go (_ : xs) = Yield 1 1 xs
+chunk64 :: Applicative m => S.Stream m B -> S.Stream m Word64
+chunk64 (S.Stream upd s0) = S.Stream go (Just (s0, zeroBits, 0)) where
+  go Nothing = pure S.Done
+  go (Just (s, !acc, !len)) = flip fmap (upd s) $ \case
+    S.Done -> S.Yield acc Nothing
+    S.Skip s' -> S.Skip $ Just (s', acc, len)
+    S.Yield (B width w) s' -> case mask width .&. w of
+      w' | width + len >= 64 -> S.Yield
+            (acc .|. unsafeShiftL w' len)
+            $ Just (s', unsafeShiftR w' (64 - len), len + width - 64)
+         | otherwise -> S.Skip $ Just (s', acc .|. unsafeShiftL w' len, len + width)
+{-# INLINE chunk64 #-}
 
 mask :: Int -> Word64
 mask n = unsafeShiftL 1 n - 1
 {-# INLINE mask #-}
-
-build :: BitStream -> [Word64]
-build (BitStream s0 upd) = go s0 zeroBits 0 where
-  go s !acc !len = case upd s of
-    Done -> [acc | len > 0]
-    Skip s' -> go s' acc len
-    Yield width w s' -> case mask width .&. w of
-      w' | width + len >= 64 -> (acc .|. unsafeShiftL w' len)
-            : go s' (unsafeShiftR w' (64 - len)) (len + width - 64)
-         | otherwise -> go s' (acc .|. unsafeShiftL w' len) (len + width)
-{-# INLINE build #-}
 
 readBits :: V.Vector v Word64 => v Word64 -> Int -> Int -> Word64
 readBits vec width pos
