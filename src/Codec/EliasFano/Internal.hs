@@ -1,5 +1,7 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# OPTIONS_GHC -ddump-simpl -ddump-to-file -dsuppress-all #-}
 module Codec.EliasFano.Internal (Step(..)
   , BitStream(..)
   , mask
@@ -13,7 +15,8 @@ import Data.Bits
 import Data.String
 import Data.Word (Word64)
 import Data.List.Split (chunksOf)
-import qualified Data.Vector.Storable as V
+import qualified Data.Vector.Generic as V
+import qualified Data.Vector.Unboxed as UV
 
 data Step s = Done
   | Skip s
@@ -49,7 +52,7 @@ build (BitStream s0 upd) = go s0 zeroBits 0 where
          | otherwise -> go s' (acc .|. unsafeShiftL w' len) (len + width)
 {-# INLINE build #-}
 
-readBits :: V.Vector Word64 -> Int -> Int -> Word64
+readBits :: V.Vector v Word64 => v Word64 -> Int -> Int -> Word64
 readBits vec width pos
   | b + width > 64 = unsafeShiftL extra (64 - b) .|. base
   | otherwise = base
@@ -58,8 +61,9 @@ readBits vec width pos
     b = pos .&. 63
     base = (V.unsafeIndex vec i `unsafeShiftR` b) .&. mask width
     extra = V.unsafeIndex vec (i + 1) .&. mask (width + b - 64)
+{-# SPECIALISE readBits :: UV.Vector Word64 -> Int -> Int -> Word64 #-}
 
-selectFrom :: Int -> V.Vector Word64 -> Int -> Int
+selectFrom :: V.Vector v Word64 => Int -> v Word64 -> Int -> Int
 selectFrom offset vec = uncurry (flip go) $ divMod offset 64 where
   go ofs i q
     | ofs == 0, popCount v < q = 64 + go ofs (i + 1) (q - popCount v)
@@ -70,6 +74,7 @@ selectFrom offset vec = uncurry (flip go) $ divMod offset 64 where
     where
       v = V.unsafeIndex vec i
       v' = v `unsafeShiftR` ofs .|. V.unsafeIndex vec (i + 1) `unsafeShiftL` (64 - ofs)
+{-# SPECIALISE selectFrom :: Int -> UV.Vector Word64 -> Int -> Int #-}
 
 -- | Convert a word of various bits into a word where each byte contains the count of bits in the corresponding original byte
 --
