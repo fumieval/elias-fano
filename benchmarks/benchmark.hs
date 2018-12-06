@@ -1,4 +1,3 @@
-{-# OPTIONS_GHC -ddump-simpl -ddump-to-file -dsuppress-all #-}
 import Gauge.Main
 
 import Codec.EliasFano

@@ -20,18 +20,19 @@ unsafeFromVectorMax maxValue vec = runST $ do
   counter <- UV.unsafeFreeze mcounter
   return EliasFano
     { efWidth = width
-    , efLength = len
-    , efContent = V.fromList $ build $ BitStream (Left 0) (upd counter)
+    , efUpper = V.fromList $ build $ BitStream 0 (upper counter)
+    , efLower = V.fromList $ build $ BitStream 0 lower
+    -- , efRanks = UV.postscanl (+) 0 $ UV.map popCount content
     }
   where
     len = V.length vec
     width = max 1 $ ceiling $ logBase 2 (fromIntegral maxValue / fromIntegral len :: Double)
-    upd _ (Left i)
-      | i == len = Skip (Right 0)
-      | otherwise = Yield width (fromIntegral $ V.unsafeIndex vec i) (Left $! i + 1)
-    upd counter (Right i)
+    lower i
+      | i == len = Done
+      | otherwise = Yield width (fromIntegral $ V.unsafeIndex vec i) (i + 1)
+    upper counter i
       | i == V.length counter = Done
-      | otherwise = let n = V.unsafeIndex counter i in Yield (n + 1) (mask n) (Right $! i + 1)
+      | otherwise = let n = V.unsafeIndex counter i in Yield (n + 1) (mask n) (i + 1)
 {-# INLINE unsafeFromVectorMax #-}
 
 unsafeFromVector :: V.Vector v Int => v Int -> EliasFano
@@ -42,14 +43,14 @@ unsafeFromVector vec
 
 data EliasFano = EliasFano
     { efWidth :: !Int
-    , efLength :: !Int
-    , efContent :: !(UV.Vector Word64)
+    , efUpper :: !(UV.Vector Word64)
+    , efLower :: !(UV.Vector Word64)
     }
     deriving Show
 
 (!) :: EliasFano -> Int -> Int
-EliasFano width len vec ! i = unsafeShiftL (selectFrom (len * width) vec i - i) width
-  .|. fromIntegral (readBits vec width (i * width))
+EliasFano width upper lower ! i = unsafeShiftL (select upper i - i) width
+  .|. fromIntegral (readBits lower width (i * width))
 
 prop_access :: [QC.NonNegative Int] -> QC.NonNegative Int -> QC.Property
 prop_access xs i_ = QC.counterexample (show (base, ef, i))
