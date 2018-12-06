@@ -64,16 +64,18 @@ readBits vec width pos
 {-# SPECIALISE readBits :: UV.Vector Word64 -> Int -> Int -> Word64 #-}
 
 selectFrom :: V.Vector v Word64 => Int -> v Word64 -> Int -> Int
-selectFrom offset vec = uncurry (flip go) $ divMod offset 64 where
-  go ofs i q
-    | ofs == 0, popCount v < q = 64 + go ofs (i + 1) (q - popCount v)
+selectFrom offset vec = uncurry (flip $ go 0) $ divMod offset 64 where
+  go !acc !ofs !i !q
+    | ofs == 0, pv < q = go (acc + 64) ofs (i + 1) (q - pv)
     | ofs == 0 = selectWord64 v q
-    | i >= V.length vec - 1 = selectWord64 (v `unsafeShiftR` ofs) q
-    | popCount v' <= q = 64 + go ofs (i + 1) (q - popCount v')
-    | otherwise = selectWord64 v' q
+    | i >= V.length vec - 1 = acc + selectWord64 (v `unsafeShiftR` ofs) q
+    | pv' <= q = go (acc + 64) ofs (i + 1) (q - pv')
+    | otherwise = acc + selectWord64 v' q
     where
       v = V.unsafeIndex vec i
+      pv = popCount v
       v' = v `unsafeShiftR` ofs .|. V.unsafeIndex vec (i + 1) `unsafeShiftL` (64 - ofs)
+      pv' = popCount v'
 {-# SPECIALISE selectFrom :: Int -> UV.Vector Word64 -> Int -> Int #-}
 
 -- | Convert a word of various bits into a word where each byte contains the count of bits in the corresponding original byte
