@@ -17,17 +17,19 @@ import qualified Data.Vector.Fusion.Stream.Monadic as S
 
 data B = B !Int !Word64
 
+data Chunker s = Chunker s !Word64 !Int
+  | ChunkerDone
+
 chunk64 :: Applicative m => S.Stream m B -> S.Stream m Word64
-chunk64 (S.Stream upd s0) = S.Stream go (Just (s0, zeroBits, 0)) where
-  go Nothing = pure S.Done
-  go (Just (s, !acc, !len)) = flip fmap (upd s) $ \case
-    S.Done -> S.Yield acc Nothing
-    S.Skip s' -> S.Skip $ Just (s', acc, len)
+chunk64 (S.Stream upd s0) = S.Stream go $ Chunker s0 zeroBits 0 where
+  go ChunkerDone = pure S.Done
+  go (Chunker s acc len) = flip fmap (upd s) $ \case
+    S.Done -> S.Yield acc ChunkerDone
+    S.Skip s' -> S.Skip $ Chunker s' acc len
     S.Yield (B width w) s' -> case mask width .&. w of
-      w' | width + len >= 64 -> S.Yield
-            (acc .|. unsafeShiftL w' len)
-            $ Just (s', unsafeShiftR w' (64 - len), len + width - 64)
-         | otherwise -> S.Skip $ Just (s', acc .|. unsafeShiftL w' len, len + width)
+      w' | width + len >= 64 -> S.Yield (acc .|. unsafeShiftL w' len)
+            $ Chunker s' (unsafeShiftR w' (64 - len)) (len + width - 64)
+         | otherwise -> S.Skip $ Chunker s' (acc .|. unsafeShiftL w' len) (len + width)
 {-# INLINE chunk64 #-}
 
 mask :: Int -> Word64

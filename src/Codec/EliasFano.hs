@@ -33,7 +33,7 @@ unsafeFromStreamNMax efLength maxValue (S.Stream upd s0) = do
   counter <- UV.unsafeFreeze mcounter
   mefLower <- GM.munstream $ B.fromStream (chunk64 $ S.Stream go s0)
     $ B.Exact $ (efWidth * efLength + 63) `div` 64
-  mefUpper <- GM.munstream $ B.fromStream (chunk64 $ S.Stream (upper counter) 0) (B.Exact counterSize)
+  mefUpper <- GM.munstream $ B.fromStream (chunk64 $ S.Stream (upper counter) 0) (B.Exact $ (efLength + 3) `div` 4)
   efUpper <- UV.unsafeFreeze mefUpper
   efLower <- UV.unsafeFreeze mefLower
   return EliasFano
@@ -45,6 +45,7 @@ unsafeFromStreamNMax efLength maxValue (S.Stream upd s0) = do
     upper counter i
       | i == V.length counter = pure S.Done
       | otherwise = let n = V.unsafeIndex counter i in pure $ S.Yield (B (n + 1) (mask n)) (i + 1)
+{-# INLINE unsafeFromStreamNMax #-}
 
 unsafeFromVector :: V.Vector v Int => v Int -> EliasFano
 unsafeFromVector vec
