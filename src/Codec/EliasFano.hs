@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE LambdaCase #-}
@@ -29,11 +30,12 @@ unsafeFromStreamNMax efLength maxValue (S.Stream upd s0) = do
         S.Skip s' -> pure $ S.Skip s'
         S.Yield v s' -> do
           MV.unsafeModify mcounter (+1) (v `unsafeShiftR` efWidth)
-          return $ S.Yield (B efWidth (fromIntegral v)) s'
+          return $ S.Yield (efWidth `B` fromIntegral v) s'
   counter <- UV.unsafeFreeze mcounter
   mefLower <- GM.munstream $ B.fromStream (chunk64 $ S.Stream go s0)
     $ B.Exact $ (efWidth * efLength + 63) `div` 64
-  mefUpper <- GM.munstream $ B.fromStream (chunk64 $ S.Stream (upper counter) 0) (B.Exact $ (efLength + 3) `div` 4)
+  mefUpper <- GM.munstream $ B.fromStream (chunk64 $ S.Stream (upper counter) 0)
+    $ B.Exact $ (efLength + 3) `div` 4
   efUpper <- UV.unsafeFreeze mefUpper
   efLower <- UV.unsafeFreeze mefLower
   return EliasFano
@@ -44,7 +46,7 @@ unsafeFromStreamNMax efLength maxValue (S.Stream upd s0) = do
     efWidth = max 1 $ ceiling $ logBase 2 (fromIntegral maxValue / fromIntegral efLength :: Double)
     upper counter i
       | i == V.length counter = pure S.Done
-      | otherwise = let n = V.unsafeIndex counter i in pure $ S.Yield (B (n + 1) (mask n)) (i + 1)
+      | otherwise = let !n = V.unsafeIndex counter i in pure $ S.Yield ((n + 1) `B` mask n) (i + 1)
 {-# INLINE unsafeFromStreamNMax #-}
 
 unsafeFromVector :: V.Vector v Int => v Int -> EliasFano
@@ -64,7 +66,7 @@ data EliasFano = EliasFano
     deriving Show
 
 (!) :: EliasFano -> Int -> Int
-EliasFano _ width upper ranks lower ! i = unsafeShiftL (select ranks upper i - i) width
+(!) (EliasFano _ width upper ranks lower) i = unsafeShiftL (select ranks upper i - i) width
   .|. fromIntegral (readBits lower width (i * width))
 
 prop_access :: [QC.NonNegative Int] -> QC.NonNegative Int -> QC.Property
