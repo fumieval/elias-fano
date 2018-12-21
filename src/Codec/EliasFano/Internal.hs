@@ -3,6 +3,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
 module Codec.EliasFano.Internal (B(..), chunk64
+  , unary
   , mask
   , readBits
   , select
@@ -31,6 +32,20 @@ chunk64 (S.Stream upd s0) = S.Stream go $ Chunker s0 zeroBits 0 where
             $ Chunker s' (unsafeShiftR w' (64 - len)) (len + width - 64)
          | otherwise -> S.Skip $ Chunker s' (acc .|. unsafeShiftL w' len) (len + width)
 {-# INLINE chunk64 #-}
+
+data Unary s = Unary s | UnaryCont !Int s
+
+unary :: Applicative m => S.Stream m Int -> S.Stream m B
+unary (S.Stream upd s0) = S.Stream go $ Unary s0 where
+  go (Unary s) = flip fmap (upd s) $ \case
+    S.Done -> S.Done
+    S.Skip s' -> S.Skip (Unary s')
+    S.Yield n s' -> step n s'
+  go (UnaryCont n s') = pure $ step n s'
+  step n s'
+    | n < 64 = S.Yield ((n + 1) `B` mask n) (Unary s')
+    | otherwise = S.Yield (B 64 (complement zeroBits)) (UnaryCont (n - 64) s')
+{-# INLINE unary #-}
 
 mask :: Int -> Word64
 mask n = unsafeShiftL 1 n - 1
