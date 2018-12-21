@@ -16,4 +16,15 @@ main = do
     , bench "reverse/vector" $ whnf V.reverse td
     , bench "access/elias-fano" $ nf (map (ef!)) [0..V.length td - 1]
     , bench "access/vector" $ nf (map (td V.!)) [0..V.length td - 1]
+    , bench "lookupGE/elias-fano" $ nf (map (lookupGE ef)) (V.toList td)
+    , bench "lookupGE/vector" $ nf (map binarySearch) (V.toList td)
     ]
+
+binarySearch :: Word64 -> Int
+binarySearch x = go 0 (V.length td - 1) where
+  go l r
+    | l >= r = l
+    | i <- div (l + r) 2 = case compare x (td V.! i) of
+      LT -> go l i
+      EQ -> i
+      GT -> go (i + 1) r

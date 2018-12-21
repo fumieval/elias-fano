@@ -7,6 +7,7 @@ module Codec.EliasFano.Internal (B(..), chunk64
   , mask
   , readBits
   , select
+  , select0
   ) where
 
 import Control.Exception (assert)
@@ -72,6 +73,18 @@ select ranks vec q = go 0 (V.length ranks - 1) where
       i = div (l + r) 2
       v = V.unsafeIndex vec i
 {-# SPECIALISE select :: UV.Vector Int -> UV.Vector Word64 -> Int -> Int #-}
+
+select0 :: (V.Vector v Int, V.Vector v Word64) => v Int -> v Word64 -> Int -> Int
+select0 ranks vec q = go 0 (V.length ranks - 1) where
+  go l r
+    | l >= r = selectWord64 v (q - rank0 i) + 64 * l
+    | q < rank0 (i + 1) = go l i
+    | otherwise = go (i + 1) r
+    where
+      rank0 x = 64 * x - V.unsafeIndex ranks x
+      i = div (l + r) 2
+      v = complement $ V.unsafeIndex vec i
+{-# SPECIALISE select0 :: UV.Vector Int -> UV.Vector Word64 -> Int -> Int #-}
 
 -- | Convert a word of various bits into a word where each byte contains the count of bits in the corresponding original byte
 --
