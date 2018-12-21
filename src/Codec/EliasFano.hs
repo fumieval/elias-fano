@@ -22,26 +22,28 @@ data EncoderState s = ESCont !Int !Word64 !Int | ESDone
 
 unsafeFromVector :: V.Vector v Word64 => v Word64 -> EliasFano
 unsafeFromVector vec = runST $ do
-  let go ESDone = pure S.Done
-      go (ESCont i current n)
-        | current > maxValue `unsafeShiftR` efWidth = pure $ S.Yield n ESDone
-        | otherwise = pure $ case fromIntegral $ V.unsafeIndex vec i `unsafeShiftR` efWidth of
-          u | u == current -> S.Skip $ ESCont (i + 1) current (n + 1)
-            | otherwise -> S.Yield n (ESCont i (current + 1) 0)
-
-  mefLower <- GM.munstream $ B.fromStream
-    (chunk64 $ S.map (B efWidth . fromIntegral) $ B.elements $ B.fromVector vec)
-    $ B.Exact $ (efWidth * efLength + 63) `div` 64
-  mefUpper <- GM.munstream $ B.fromStream (chunk64 $ unary $ S.Stream go $ ESCont 0 0 0)
-    $ B.Exact $ (efLength + 3) `div` 4
-  efUpper <- UV.unsafeFreeze mefUpper
-  efLower <- UV.unsafeFreeze mefLower
+  efLower <- fromStream' ((efWidth * efLength + 63) `div` 64)
+    $ chunk64 $ S.map (B efWidth . fromIntegral) $ B.elements $ B.fromVector vec
+  efUpper <- fromStream' ((efLength + 3) `div` 4)
+    $ chunk64 $ unary $ S.Stream upd $ ESCont 0 0 0
   return EliasFano
     { efRanks = UV.prescanl (+) 0 $ UV.map popCount efUpper
     , ..
     }
   where
+    upd ESDone = pure S.Done
+    upd (ESCont i current n)
+      | current > maxValue `unsafeShiftR` efWidth = pure $ S.Yield n ESDone
+      | otherwise = pure $ case fromIntegral $ V.unsafeIndex vec i `unsafeShiftR` efWidth of
+        u | u == current -> S.Skip $ ESCont (i + 1) current (n + 1)
+          | otherwise -> S.Yield n (ESCont i (current + 1) 0)
+
     efLength = V.length vec
+
+    fromStream' len s = GM.munstream (B.fromStream s (B.Exact len))
+      >>= UV.unsafeFreeze
+    {-# INLINE fromStream' #-}
+
     maxValue
       | V.null vec = 1
       | otherwise = V.last vec + 1
