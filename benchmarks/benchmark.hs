@@ -13,7 +13,7 @@ main = do
   let ef = unsafeFromVector td
   defaultMain
     [ bench "encode/elias-fano" $ whnf unsafeFromVector td
-    , bench "encode/vector" $ whnf V.sum td
+    , bench "reverse/vector" $ whnf V.reverse td
     , bench "access/elias-fano" $ nf (map (ef!)) [0..V.length td - 1]
     , bench "access/vector" $ nf (map (td V.!)) [0..V.length td - 1]
     ]
