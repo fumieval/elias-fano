@@ -5,9 +5,7 @@
 module Codec.EliasFano (EliasFano(..)
     , unsafeFromVector
     , (!)
-    , lookupGE
-    , prop_access
-    , prop_lookupGE) where
+    , lookupGE) where
 
 import Control.Monad.ST
 import Data.Bits
@@ -18,11 +16,8 @@ import qualified Data.Vector.Fusion.Bundle.Monadic as B
 import qualified Data.Vector.Fusion.Bundle.Size as B
 import qualified Data.Vector.Fusion.Stream.Monadic as S
 import Data.Word
-import Data.List (findIndex)
 
 import Codec.EliasFano.Internal
-
-import qualified Test.QuickCheck as QC
 
 data EncoderState s = ESCont !Int !Word64 !Int | ESDone
 
@@ -74,7 +69,7 @@ lookupGE ef@EliasFano{..} x
   | x <= ef ! l0 = l0
   | otherwise = go l0 r0
   where
-    go l r | l >= r = r
+    go l r | l >= r = l
     go l r = case div (l + r) 2 of
       i -> case compare low (readBits efLower efWidth (i * efWidth)) of
         LT -> go l i
@@ -88,20 +83,3 @@ lookupGE ef@EliasFano{..} x
       | high == 0 = 0
       | otherwise = select0 efRanks efUpper (high - 1) - high + 1
     r0 = select0 efRanks efUpper high - high
-
-prop_lookupGE :: [QC.NonNegative Int] -> QC.NonNegative Int -> QC.Property
-prop_lookupGE xs (QC.NonNegative x) = QC.counterexample (show (base, x))
-  $ case findIndex (>= fromIntegral x) base of
-    Nothing -> () QC.=== ()
-    Just j -> lookupGE ef (fromIntegral x) QC.=== j
-  where
-    base = scanl (+) 0 $ map (fromIntegral . QC.getNonNegative) xs
-    ef = unsafeFromVector $ UV.fromList base
-
-prop_access :: [QC.NonNegative Int] -> QC.NonNegative Int -> QC.Property
-prop_access xs i_ = QC.counterexample (show (base, ef, i))
-  $ ef ! i == base !! i
-  where
-    i = QC.getNonNegative i_ `mod` length base
-    base = scanl (+) 0 $ map (fromIntegral . QC.getNonNegative) xs
-    ef = unsafeFromVector $ UV.fromList base
