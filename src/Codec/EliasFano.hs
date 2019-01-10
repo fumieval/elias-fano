@@ -2,10 +2,12 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE LambdaCase #-}
+{-# OPTIONS_GHC -ddump-simpl -ddump-to-file -dsuppress-all #-}
 module Codec.EliasFano (EliasFano(..)
     , unsafeFromVector
     , (!)
-    , lookupGE) where
+    , lookupGE
+    , intersections) where
 
 import Control.Monad.ST
 import Data.Bits
@@ -15,6 +17,7 @@ import qualified Data.Vector.Unboxed as UV
 import qualified Data.Vector.Fusion.Bundle.Monadic as B
 import qualified Data.Vector.Fusion.Bundle.Size as B
 import qualified Data.Vector.Fusion.Stream.Monadic as S
+import qualified Data.Vector as BV
 import Data.Word
 
 import Codec.EliasFano.Internal
@@ -61,7 +64,8 @@ data EliasFano = EliasFano
     deriving Show
 
 (!) :: EliasFano -> Int -> Word64
-(!) (EliasFano _ width upper ranks lower) i = fromIntegral (unsafeShiftL (select ranks upper i - i) width)
+(!) (EliasFano _ width upper ranks lower) i
+  = fromIntegral (unsafeShiftL (select ranks upper i - i) width)
   .|. readBits lower width (i * width)
 
 lookupGE :: EliasFano -> Word64 -> Int
@@ -83,3 +87,17 @@ lookupGE ef@EliasFano{..} x
       | high == 0 = 0
       | otherwise = select0 efRanks efUpper (high - 1) - high + 1
     r0 = select0 efRanks efUpper high - high
+
+intersections :: BV.Vector EliasFano -> [Word64]
+intersections xss = go 0 0 (xss V.! 0 ! 0) where
+  len = V.length xss
+  go !i !count !x
+    | count == len = x : go i' 0 x'
+    | j >= efLength ef = []
+    | x == ef ! j = go i' (count + 1) x
+    | otherwise = go i' 0 x'
+    where
+      !i' = mod (i + 1) len
+      !j = lookupGE ef x
+      x' = ef ! lookupGE ef (x + 1)
+      !ef = xss V.! i

@@ -1,9 +1,11 @@
 {-# LANGUAGE TemplateHaskell #-}
 import Codec.EliasFano
 import qualified Data.Vector.Unboxed as UV
-import Data.List (findIndex)
+import qualified Data.Vector as BV
+import Data.List (findIndex, intersect)
 import Test.QuickCheck
 
+import Debug.Trace
 newtype Monotonic a = Monotonic [a] deriving Show
 
 instance (Num a, Ord a, Arbitrary a) => Arbitrary (Monotonic a) where
@@ -21,6 +23,18 @@ prop_access (Monotonic xs) i_ = fromIntegral (ef ! i) === xs !! i
   where
     i = getNonNegative i_ `mod` length xs
     ef = unsafeFromVector $ UV.fromList $ map fromIntegral xs
+
+newtype Monotonic' a = Monotonic' [a] deriving Show
+
+instance (Num a, Ord a, Arbitrary a) => Arbitrary (Monotonic' a) where
+  arbitrary = Monotonic' . scanl (+) 0 . map getPositive <$> arbitrary
+
+prop_intersection :: Monotonic' Int -> Monotonic' Int -> Property
+prop_intersection (Monotonic' xs) (Monotonic' ys)
+  = map fromIntegral (intersections $ BV.fromList [ef, ef']) === intersect xs ys
+  where
+    ef = unsafeFromVector $ UV.fromList $ map fromIntegral xs
+    ef' = unsafeFromVector $ UV.fromList $ map fromIntegral ys
 
 return []
 main = $quickCheckAll
